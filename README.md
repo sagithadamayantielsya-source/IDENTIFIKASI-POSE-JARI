@@ -11,7 +11,7 @@ Dibuat oleh Elsya Sagitha Damayanti .S S1 Ilmu Komputer, Universitas Halu Oleo.
 
 Setelah GitHub Pages aktif, aplikasi bisa dibuka di:
 
-`https://elsya.github.io/NAMA-REPO/`
+[`https://elsya.github.io/NAMA-REPO/`](https://github.com/sagithadamayantielsya-source/IDENTIFIKASI-POSE-JARI.git)
 
 Ganti `USERNAME` dan `NAMA-REPO` sesuai akun dan nama repositori Anda.
 
