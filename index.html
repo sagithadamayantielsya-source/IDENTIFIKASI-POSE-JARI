@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pengenal Pose Jari</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<style>
+  /* Konsep tata letak: panggung kamera besar di kiri, panel hasil di kanan.
+     Di layar kecil, panel hasil pindah ke bawah kamera. */
+  :root {
+    --bg:        #0e1320;   /* biru malam */
+    --surface:   #161d2e;   /* kartu / panel */
+    --surface-2: #1d2639;   /* elemen di dalam panel */
+    --line:      #2a3550;   /* garis tipis */
+    --text:      #ece8de;   /* putih gading */
+    --muted:     #98a1b8;   /* teks pendukung */
+    --lima:      #f0b765;   /* warna kelas "lima jari" (kuning emas) */
+    --tiga:      #6fd0c0;   /* warna kelas "tiga jari" (hijau toska) */
+    --danger:    #ef8a7c;
+
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body:    "Figtree", "Segoe UI", system-ui, sans-serif;
+    --font-mono:    "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(111,208,192,.10), transparent 60%),
+      radial-gradient(800px 500px at -10% 0%, rgba(240,183,101,.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 32px 20px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ---------- Header ---------- */
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    text-wrap: balance;
+  }
+  .subtitle { margin: 8px 0 0; color: var(--muted); max-width: 46ch; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: .85rem; color: var(--muted);
+    white-space: nowrap;
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status[data-state="loading"] .dot { background: var(--lima); animation: pulse 1.2s ease-in-out infinite; }
+  .status[data-state="ready"] .dot   { background: var(--tiga); }
+  .status[data-state="live"] .dot    { background: var(--danger); animation: pulse 1.2s ease-in-out infinite; }
+  .status[data-state="error"] .dot   { background: var(--danger); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* ---------- Tata letak utama ---------- */
+  main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ---------- Panggung kamera ---------- */
+  .stage {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: 22px;
+    overflow: hidden;
+    background: #090d17;
+    border: 1px solid var(--line);
+    box-shadow: 0 24px 60px -24px rgba(0,0,0,.7);
+    --ring: var(--line);
+    transition: --ring .2s;
+  }
+  .stage video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);           /* efek cermin, supaya terasa alami */
+  }
+  .stage.no-mirror video { transform: none; }
+
+  /* Pembatas sudut, seperti bidikan kamera */
+  .corner { position: absolute; width: 28px; height: 28px; border: 3px solid var(--ring); opacity: .9; pointer-events: none; transition: border-color .25s; }
+  .corner.tl { top: 16px; left: 16px;  border-right: 0; border-bottom: 0; border-top-left-radius: 10px; }
+  .corner.tr { top: 16px; right: 16px; border-left: 0;  border-bottom: 0; border-top-right-radius: 10px; }
+  .corner.bl { bottom: 16px; left: 16px;  border-right: 0; border-top: 0; border-bottom-left-radius: 10px; }
+  .corner.br { bottom: 16px; right: 16px; border-left: 0;  border-top: 0; border-bottom-right-radius: 10px; }
+  .stage[data-class="0"] { --ring: var(--lima); }
+  .stage[data-class="1"] { --ring: var(--tiga); }
+
+  .live-badge {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(14,19,32,.72); backdrop-filter: blur(6px);
+    font-size: .75rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  }
+  .live-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: pulse 1.2s ease-in-out infinite; }
+  .stage.is-live .live-badge { display: inline-flex; }
+
+  .overlay-result {
+    position: absolute; left: 20px; right: 20px; bottom: 20px;
+    display: none; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; border-radius: 14px;
+    background: rgba(14,19,32,.78); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .stage.is-live .overlay-result { display: flex; }
+  .overlay-result .name { text-transform: capitalize; font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; }
+  .overlay-result .pct { font-family: var(--font-mono); font-size: 1rem; color: var(--muted); }
+
+  /* Tampilan sebelum kamera menyala */
+  .placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    padding: 24px; text-align: center; color: var(--muted);
+  }
+  .placeholder svg { width: 54px; height: 54px; stroke: var(--muted); }
+  .placeholder p { margin: 0; max-width: 34ch; }
+  .stage.is-live .placeholder { display: none; }
+
+  /* ---------- Tombol ---------- */
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  button, select {
+    font-family: inherit; font-size: .95rem; font-weight: 600;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 18px;
+    cursor: pointer;
+    transition: transform .12s, background .15s, border-color .15s;
+  }
+  button:hover:not(:disabled) { background: #25314a; border-color: #3a4868; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--text); color: #11172a; border-color: var(--text); }
+  button.primary:hover:not(:disabled) { background: #fff; border-color: #fff; }
+  select { max-width: 100%; font-weight: 500; }
+  :focus-visible { outline: 2px solid var(--tiga); outline-offset: 2px; }
+
+  .message { margin: 14px 0 0; min-height: 1.5em; font-size: .9rem; color: var(--muted); }
+  .message.error { color: var(--danger); }
+
+  /* ---------- Panel hasil ---------- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  .eyebrow { margin: 0 0 6px; font-size: .75rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .verdict {
+    margin: 0;
+    font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(1.8rem, 3.6vw, 2.4rem); line-height: 1.1; letter-spacing: -0.01em;
+    min-height: 2.2em;
+    text-transform: capitalize;
+    display: flex; align-items: center;
+    transition: color .2s;
+  }
+  .verdict[data-class="0"] { color: var(--lima); }
+  .verdict[data-class="1"] { color: var(--tiga); }
+  .verdict.idle { color: var(--muted); font-weight: 500; font-size: 1.25rem; }
+
+  .bars { display: flex; flex-direction: column; gap: 16px; }
+  .bar-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+  .bar-head .label { font-weight: 500; text-transform: capitalize; }
+  .bar-head .value { font-family: var(--font-mono); font-size: .95rem; font-variant-numeric: tabular-nums; }
+  .track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .fill { height: 100%; width: 0%; border-radius: 999px; transition: width .18s ease-out; }
+  .bar[data-i="0"] .fill { background: var(--lima); }
+  .bar[data-i="1"] .fill { background: var(--tiga); }
+
+  .tips { margin: 0; padding: 16px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; display: flex; flex-direction: column; gap: 6px; }
+  .tips strong { color: var(--text); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+
+<body>
+<div class="app">
+
+  <header>
+    <div>
+      <h1>Pengenal Pose Jari</h1>
+      <p class="subtitle">Tunjukkan tangan Anda ke kamera. Aplikasi menebak apakah itu pose lima jari atau tiga jari.</p>
+    </div>
+    <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
+      <span class="dot"></span><span id="statusText">Memuat model…</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Kiri: kamera -->
+    <section aria-label="Kamera">
+      <div class="stage" id="stage" data-class="">
+        <video id="video" playsinline muted autoplay></video>
+
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <span class="live-badge">Live</span>
+
+        <div class="placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.8A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.2L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/>
+            <circle cx="12" cy="12.5" r="3.2"/>
+          </svg>
+          <p>Kamera belum aktif. Tekan <strong>Nyalakan kamera</strong>, lalu izinkan akses kamera di browser.</p>
+        </div>
+
+        <div class="overlay-result">
+          <span class="name" id="overlayName">—</span>
+          <span class="pct" id="overlayPct"></span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="primary" id="btnStart" disabled>Nyalakan kamera</button>
+        <button id="btnStop" disabled>Matikan</button>
+        <button id="btnSwitch" hidden>Ganti kamera</button>
+        <button id="btnMirror" aria-pressed="true">Cermin: aktif</button>
+      </div>
+      <p class="message" id="message"></p>
+    </section>
+
+    <!-- Kanan: hasil -->
+    <aside class="panel" aria-label="Hasil prediksi">
+      <div>
+        <p class="eyebrow">Hasil tebakan</p>
+        <p class="verdict idle" id="verdict">Menunggu kamera</p>
+      </div>
+
+      <div class="bars" id="bars"><!-- diisi oleh JavaScript --></div>
+
+      <div class="tips">
+        <span><strong>Tips:</strong> pakai cahaya yang cukup.</span>
+        <span>Letakkan satu tangan di tengah layar, telapak menghadap kamera.</span>
+        <span>Jarak ideal sekitar satu lengan.</span>
+      </div>
+    </aside>
+  </main>
+
+</div>
+
+<!-- Library: TensorFlow.js dan Teachable Machine (butuh internet) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
+<!-- Data model Anda (struktur, bobot, label) -->
+<script src="model-data.js"></script>
+
+<script>
+/* ==========================================================
+   1. Ambil elemen HTML yang akan kita ubah-ubah
+   ========================================================== */
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), video = $("video");
+const statusBox = $("status"), statusText = $("statusText");
+const btnStart = $("btnStart"), btnStop = $("btnStop");
+const btnSwitch = $("btnSwitch"), btnMirror = $("btnMirror");
+const message = $("message"), verdict = $("verdict"), barsBox = $("bars");
+const overlayName = $("overlayName"), overlayPct = $("overlayPct");
+
+/* ==========================================================
+   2. Variabel penyimpan keadaan aplikasi
+   ========================================================== */
+let model = null;          // model Teachable Machine
+let stream = null;         // aliran video dari kamera
+let running = false;       // apakah loop prediksi sedang berjalan
+let facing = "user";       // "user" = kamera depan, "environment" = kamera belakang
+let mirrored = true;       // tampilan cermin
+const CONFIDENCE_MIN = 0.70;   // di bawah 70%, tampilkan "belum yakin"
+
+/* ==========================================================
+   3. Fungsi kecil untuk menampilkan status dan pesan
+   ========================================================== */
+function setStatus(state, text) {
+  statusBox.dataset.state = state;
+  statusText.textContent = text;
+}
+function setMessage(text, isError = false) {
+  message.textContent = text;
+  message.classList.toggle("error", isError);
+}
+
+/* ==========================================================
+   4. Memuat model dari model-data.js
+      Data disimpan sebagai teks (base64), jadi kita ubah dulu
+      menjadi "file" lalu serahkan ke Teachable Machine.
+   ========================================================== */
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function loadModel() {
+  try {
+    if (!window.tmImage || !window.MODEL_DATA) {
+      throw new Error("Library atau model-data.js tidak termuat. Cek koneksi internet dan pastikan model-data.js satu folder dengan index.html.");
+    }
+    const d = window.MODEL_DATA;
+    // Nama file bobot harus sama dengan yang tertulis di model.json ("weights.bin")
+    const modelFile    = new File([JSON.stringify(d.modelJson)], "model.json",    { type: "application/json" });
+    const weightsFile  = new File([base64ToBytes(d.weightsBase64)], "weights.bin", { type: "application/octet-stream" });
+    const metadataFile = new File([JSON.stringify(d.metadata)], "metadata.json", { type: "application/json" });
+
+    model = await tmImage.loadFromFiles(modelFile, weightsFile, metadataFile);
+
+    buildBars(model.getClassLabels());
+    btnStart.disabled = false;
+    setStatus("ready", "Model siap");
+  } catch (err) {
+    console.error(err);
+    setStatus("error", "Model gagal dimuat");
+    setMessage(err.message, true);
+  }
+}
+
+/* Buat batang persentase, satu untuk tiap kelas */
+function buildBars(labels) {
+  barsBox.innerHTML = "";
+  labels.forEach((name, i) => {
+    const row = document.createElement("div");
+    row.className = "bar";
+    row.dataset.i = i;
+    row.innerHTML =
+      '<div class="bar-head"><span class="label"></span><span class="value">0%</span></div>' +
+      '<div class="track"><div class="fill"></div></div>';
+    row.querySelector(".label").textContent = name;
+    barsBox.appendChild(row);
+  });
+}
+
+/* ==========================================================
+   5. Menyalakan dan mematikan kamera
+   ========================================================== */
+async function startCamera() {
+  // Kamera hanya boleh dipakai di halaman aman (https, localhost, atau file)
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setMessage("Browser ini tidak mendukung kamera, atau halaman tidak dibuka lewat alamat yang aman. Coba Chrome atau Edge terbaru.", true);
+    return;
+  }
+  stopCamera(false);
+  btnStart.disabled = true;
+  setMessage("Meminta izin kamera…");
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    stage.classList.add("is-live");
+    btnStop.disabled = false;
+    btnStart.textContent = "Kamera menyala";
+    setStatus("live", "Kamera aktif");
+    setMessage("");
+
+    // Setelah izin diberikan, daftar kamera baru bisa dibaca
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    btnSwitch.hidden = cams.length < 2;
+
+    running = true;
+    predictLoop();
+  } catch (err) {
+    btnStart.disabled = false;
+    setStatus("ready", "Model siap");
+    setMessage(cameraErrorText(err), true);
+  }
+}
+
+function stopCamera(resetUI = true) {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  video.srcObject = null;
+  if (resetUI) {
+    stage.classList.remove("is-live");
+    stage.dataset.class = "";
+    btnStart.disabled = !model;
+    btnStart.textContent = "Nyalakan kamera";
+    btnStop.disabled = true;
+    btnSwitch.hidden = true;
+    verdict.className = "verdict idle";
+    verdict.textContent = "Menunggu kamera";
+    delete verdict.dataset.class;
+    barsBox.querySelectorAll(".fill").forEach(f => f.style.width = "0%");
+    barsBox.querySelectorAll(".value").forEach(v => v.textContent = "0%");
+    if (model) setStatus("ready", "Model siap");
+  }
+}
+
+/* Ubah kode error teknis menjadi kalimat yang mudah dipahami */
+function cameraErrorText(err) {
+  switch (err && err.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Izin kamera ditolak. Klik ikon gembok di sebelah alamat halaman, izinkan kamera, lalu coba lagi.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "Kamera tidak ditemukan. Pastikan kamera terpasang, lalu coba lagi.";
+    case "NotReadableError":
+      return "Kamera sedang dipakai aplikasi lain (misalnya Zoom atau Meet). Tutup aplikasi itu lalu coba lagi.";
+    default:
+      return "Kamera gagal dinyalakan: " + (err && err.message ? err.message : err);
+  }
+}
+
+/* ==========================================================
+   6. Loop prediksi: ambil gambar dari video, tanya model, tampilkan hasil
+   ========================================================== */
+async function predictLoop() {
+  while (running) {
+    if (video.readyState >= 2) {
+      // true = gambar dibalik seperti webcam Teachable Machine saat melatih
+      const result = await model.predict(video, true);
+      showResult(result);
+    }
+    await new Promise(requestAnimationFrame);   // tunggu frame berikutnya
+  }
+}
+
+function showResult(result) {
+  // Cari kelas dengan peluang tertinggi
+  let best = 0;
+  result.forEach((r, i) => { if (r.probability > result[best].probability) best = i; });
+  const top = result[best];
+  const sure = top.probability >= CONFIDENCE_MIN;
+
+  // Batang persentase
+  result.forEach((r, i) => {
+    const pct = Math.round(r.probability * 100);
+    const row = barsBox.children[i];
+    row.querySelector(".fill").style.width = pct + "%";
+    row.querySelector(".value").textContent = pct + "%";
+  });
+
+  // Teks hasil dan warna
+  if (sure) {
+    verdict.className = "verdict";
+    verdict.dataset.class = best;
+    verdict.textContent = top.className;
+    stage.dataset.class = best;
+    overlayName.textContent = top.className;
+  } else {
+    verdict.className = "verdict idle";
+    delete verdict.dataset.class;
+    verdict.textContent = "Belum yakin";
+    stage.dataset.class = "";
+    overlayName.textContent = "Belum yakin";
+  }
+  overlayPct.textContent = Math.round(top.probability * 100) + "%";
+}
+
+/* ==========================================================
+   7. Tombol-tombol
+   ========================================================== */
+btnStart.addEventListener("click", startCamera);
+btnStop.addEventListener("click", () => stopCamera(true));
+
+btnSwitch.addEventListener("click", () => {
+  facing = facing === "user" ? "environment" : "user";
+  startCamera();
+});
+
+btnMirror.addEventListener("click", () => {
+  mirrored = !mirrored;
+  stage.classList.toggle("no-mirror", !mirrored);
+  btnMirror.setAttribute("aria-pressed", mirrored);
+  btnMirror.textContent = "Cermin: " + (mirrored ? "aktif" : "mati");
+});
+
+window.addEventListener("pagehide", () => stopCamera(false));
+
+/* Mulai: muat model begitu halaman dibuka */
+loadModel();
+</script>
+</body>
+</html>
