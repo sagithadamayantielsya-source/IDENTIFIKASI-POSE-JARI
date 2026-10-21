@@ -5,13 +5,13 @@ Aplikasi web sederhana yang membuka kamera dan mengenali pose tangan secara lang
 [Teachable Machine](https://teachablemachine.withgoogle.com/) dan dijalankan di browser
 memakai TensorFlow.js. Tidak ada data yang dikirim ke server.
 
-Dibuat oleh Raihan Al Rajab, S1 Ilmu Komputer, Universitas Halu Oleo.
+Dibuat oleh Elsya Sagitha Damayanti .S S1 Ilmu Komputer, Universitas Halu Oleo.
 
 ## Demo online
 
 Setelah GitHub Pages aktif, aplikasi bisa dibuka di:
 
-`https://USERNAME.github.io/NAMA-REPO/`
+`https://elsya.github.io/NAMA-REPO/`
 
 Ganti `USERNAME` dan `NAMA-REPO` sesuai akun dan nama repositori Anda.
 
